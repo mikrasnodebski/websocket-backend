@@ -16,8 +16,10 @@ const io = new Server(server, {
 // Middleware
 app.use(cors());
 
-// Stan aplikacji: lista rysunków
+// Stan aplikacji: lista rysunków i stosy dla undo/redo
 let drawingData = []; // Lista obiektów rysunków (wszystkie akcje na tablicy)
+let undoStack = []; // Stos obiektów dla cofania
+let redoStack = []; // Stos obiektów dla przywracania
 
 // Testowa strona główna (opcjonalna)
 app.get('/', (req, res) => {
@@ -34,27 +36,41 @@ io.on('connection', (socket) => {
   // Odbieranie rysunków od klienta
   socket.on('draw', (data) => {
     drawingData.push(data); // Dodajemy nowy element do stanu
+    undoStack.push(data); // Dodajemy do stosu cofania
+    redoStack = []; // Czyścimy stos przywracania
+    console.log(`Draw received: ${JSON.stringify(data)}`);
     socket.broadcast.emit('draw', data); // Wysyłamy dane do pozostałych klientów
   });
 
   // Odbieranie zdarzenia "clear"
   socket.on('clear', () => {
     drawingData = []; // Czyścimy wszystkie dane
+    undoStack = []; // Czyścimy stos cofania
+    redoStack = []; // Czyścimy stos przywracania
+    console.log('Clear event received');
     socket.broadcast.emit('clear'); // Rozsyłamy zdarzenie "clear"
   });
 
   // Odbieranie zdarzenia "undo"
   socket.on('undo', () => {
-    if (drawingData.length > 0) {
-      const removedObject = drawingData.pop(); // Usuwamy ostatni element
+    if (undoStack.length > 0) {
+      const removedObject = undoStack.pop(); // Usuwamy ostatni element ze stosu undo
+      redoStack.push(removedObject); // Dodajemy go do stosu redo
+      drawingData = drawingData.filter(obj => JSON.stringify(obj) !== JSON.stringify(removedObject)); // Usuwamy go ze stanu
+      console.log(`Undo event: ${JSON.stringify(removedObject)}`);
       socket.broadcast.emit('undo', removedObject); // Informujemy pozostałych o cofnięciu
     }
   });
 
   // Odbieranie zdarzenia "redo"
-  socket.on('redo', (data) => {
-    drawingData.push(data); // Przywracamy element do stanu
-    socket.broadcast.emit('redo', data); // Informujemy pozostałych o przywróceniu
+  socket.on('redo', () => {
+    if (redoStack.length > 0) {
+      const restoredObject = redoStack.pop(); // Przywracamy element ze stosu redo
+      undoStack.push(restoredObject); // Dodajemy go do stosu undo
+      drawingData.push(restoredObject); // Przywracamy go do stanu
+      console.log(`Redo event: ${JSON.stringify(restoredObject)}`);
+      socket.broadcast.emit('redo', restoredObject); // Informujemy pozostałych o przywróceniu
+    }
   });
 
   // Rozłączenie użytkownika
