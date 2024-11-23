@@ -16,6 +16,9 @@ const io = new Server(server, {
 // Middleware
 app.use(cors());
 
+// Stan aplikacji: lista rysunków
+let drawingData = []; // Lista obiektów rysunków (wszystkie akcje na tablicy)
+
 // Testowa strona główna (opcjonalna)
 app.get('/', (req, res) => {
   res.send('WebSocket Server is running!');
@@ -25,10 +28,33 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
+  // Połączenie nowego klienta — przesyłamy mu aktualny stan rysowania
+  socket.emit('initialize', drawingData);
+
   // Odbieranie rysunków od klienta
   socket.on('draw', (data) => {
-    // Wysyłanie danych do innych użytkowników
-    socket.broadcast.emit('draw', data);
+    drawingData.push(data); // Dodajemy nowy element do stanu
+    socket.broadcast.emit('draw', data); // Wysyłamy dane do pozostałych klientów
+  });
+
+  // Odbieranie zdarzenia "clear"
+  socket.on('clear', () => {
+    drawingData = []; // Czyścimy wszystkie dane
+    socket.broadcast.emit('clear'); // Rozsyłamy zdarzenie "clear"
+  });
+
+  // Odbieranie zdarzenia "undo"
+  socket.on('undo', () => {
+    if (drawingData.length > 0) {
+      const removedObject = drawingData.pop(); // Usuwamy ostatni element
+      socket.broadcast.emit('undo', removedObject); // Informujemy pozostałych o cofnięciu
+    }
+  });
+
+  // Odbieranie zdarzenia "redo"
+  socket.on('redo', (data) => {
+    drawingData.push(data); // Przywracamy element do stanu
+    socket.broadcast.emit('redo', data); // Informujemy pozostałych o przywróceniu
   });
 
   // Rozłączenie użytkownika
